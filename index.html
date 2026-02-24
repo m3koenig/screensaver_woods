@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Woods Engine - v1.27.0</title>
+    <style>
+        :root {
+            --bg-color: #010402;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            width: 100vw;
+            height: 56.25vw;
+            max-height: 100vh;
+            max-width: 177.78vh;
+            background: #000;
+            box-shadow: 0 0 50px rgba(100,255,150,0.12);
+        }
+
+        .version-badge {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(100, 255, 150, 0.4);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            pointer-events: none;
+            text-transform: uppercase;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.3);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="woodsCanvas"></canvas>
+    <div class="version-badge" id="uiStatus">Woods Engine v1.27.0 | Lade...</div>
+
+    <script>
+        /**
+         * Woods Engine v1.27.0
+         * FEATURE: Diverse skin tones for farmers + Church & Fences
+         */
+
+        const canvas = document.getElementById('woodsCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const uiStatus = document.getElementById('uiStatus');
+
+        const INTERNAL_W = 480;
+        const INTERNAL_H = 270;
+        const HORIZON_Y = 85;
+        const CYCLE_DURATION = 300000; 
+
+        canvas.width = INTERNAL_W;
+        canvas.height = INTERNAL_H;
+
+        const state = {
+            entities: [],
+            animals: [],
+            birds: [],
+            riders: [],
+            farms: [],
+            farmers: [],
+            fireflies: [],
+            clouds: [],
+            stars: [],
+            fogWisps: [],
+            village: null,
+            forestPath: null,
+            time: 0,
+            lastTime: 0,
+            cycleProgress: 0,
+            timeOfDay: 'NACHT',
+            nextAnimalSpawn: 1000,
+            nextBirdSpawn: 3000,
+            nextSwarmSpawn: 5000,
+            nextRiderSpawn: 8000
+        };
+
+        const TREE_TYPES = {
+            SHADOW_OAK: { colors: ['#040c06', '#081a0f', '#12331c', '#2ea043'], trunk: '#0a0d08', width: 45, height: 48, style: 'broad' },
+            SILVER_FIR: { colors: ['#030a08', '#061a14', '#105540', '#40b080'], trunk: '#050a08', width: 32, height: 65, style: 'tiered' },
+            FROST_FIR: { colors: ['#040a0f', '#081a1f', '#106070', '#50c0d0'], trunk: '#040909', width: 26, height: 75, style: 'tiered' },
+            NIGHT_BIRCH: { colors: ['#050a05', '#081508', '#206020', '#a0f0a0'], trunk: '#d0e0f0', width: 20, height: 60, style: 'sparse' },
+            ANCIENT_PINE: { colors: ['#030803', '#051005', '#1a501a', '#409040'], trunk: '#0d0f0a', width: 38, height: 80, style: 'top' }
+        };
+
+        const ANIMAL_TYPES = {
+            RABBIT: { name: 'Rabbit', colors: ['#8d7c69', '#c6ab8d'], speed: 0.5, size: 4, behavior: 'hop' },
+            MOUSE: { name: 'Mouse', colors: ['#5a5a5a', '#999999'], speed: 0.9, size: 2.2, behavior: 'scurry' },
+            SQUIRREL: { name: 'Squirrel', colors: ['#a64d1d', '#e67e22'], speed: 0.8, size: 3.2, behavior: 'scurry' },
+            DEER: { name: 'Deer', colors: ['#5d4037', '#8d6e63'], speed: 0.25, size: 9, behavior: 'graze' }
+        };
+
+        const BIRD_TYPES = {
+            OWL: { name: 'Owl', colors: ['#5d4037', '#bcaaa4', '#ffff00'], speed: 0.35, size: 5, wingSpeed: 0.04, behavior: 'glide' },
+            WOODPECKER: { name: 'Woodpecker', colors: ['#111111', '#ffffff', '#a10000'], speed: 1.5, size: 2.5, wingSpeed: 0.22, behavior: 'undulate' },
+            RAVEN: { name: 'Raven', colors: ['#08080a', '#1a1a20'], speed: 0.8, size: 4.5, wingSpeed: 0.08, behavior: 'steady' }
+        };
+
+        const SKIN_TONES = [
+            '#ffdbac', '#f1c27d', '#e0ac69', '#8d5524', '#c68642', '#3d0c02'
+        ];
+
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+        }
+
+        function lerpColor(c1, c2, t) {
+            const r = Math.round(c1.r + (c2.r - c1.r) * t);
+            const g = Math.round(c1.g + (c2.g - c1.g) * t);
+            const b = Math.round(c1.b + (c2.b - c1.b) * t);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        const SKY_PHASES = [
+            { t: 0, top: '#010203', bot: '#050a10', name: 'Nacht' },
+            { t: 0.2, top: '#101a25', bot: '#3a2a40', name: 'Morgengrauen' },
+            { t: 0.3, top: '#4a80c0', bot: '#a0c0e0', name: 'Vormittag' },
+            { t: 0.5, top: '#60a0e0', bot: '#c0e0ff', name: 'Mittag' },
+            { t: 0.7, top: '#304060', bot: '#605040', name: 'Nachmittag' },
+            { t: 0.85, top: '#201020', bot: '#ff6040', name: 'Abendrot' },
+            { t: 1.0, top: '#010203', bot: '#050a10', name: 'Nacht' }
+        ];
+
+        function getSkyColors(progress) {
+            for(let i=0; i < SKY_PHASES.length - 1; i++) {
+                if (progress >= SKY_PHASES[i].t && progress <= SKY_PHASES[i+1].t) {
+                    const localT = (progress - SKY_PHASES[i].t) / (SKY_PHASES[i+1].t - SKY_PHASES[i].t);
+                    return {
+                        top: lerpColor(hexToRgb(SKY_PHASES[i].top), hexToRgb(SKY_PHASES[i+1].top), localT),
+                        bot: lerpColor(hexToRgb(SKY_PHASES[i].bot), hexToRgb(SKY_PHASES[i+1].bot), localT),
+                        name: progress < 0.25 || progress > 0.8 ? 'NACHT' : (progress < 0.4 ? 'MORGEN' : (progress < 0.7 ? 'TAG' : 'ABEND'))
+                    };
+                }
+            }
+            return { top: '#000', bot: '#000', name: 'NACHT' };
+        }
+
+        class Farmer {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                // Random diverse skin tone
+                this.skinColor = SKIN_TONES[Math.floor(Math.random() * SKIN_TONES.length)];
+            }
+            draw(ctx, time, timeOfDay) {
+                if(timeOfDay === 'NACHT') return;
+
+                const swing = Math.sin(time * 0.003);
+                ctx.save();
+                ctx.translate(Math.round(this.x), Math.round(this.y));
+                
+                // Farmer body (Dark silhouette for contrast)
+                ctx.fillStyle = '#0a0c0a';
+                ctx.fillRect(0, -5, 2, 5); 
+                
+                // Farmer head (Skin color)
+                ctx.fillStyle = this.skinColor;
+                ctx.fillRect(0, -7, 2, 2); 
+                
+                // Scythe (Sense)
+                ctx.strokeStyle = '#1a1a1a';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(1, -3);
+                const reach = swing * 6;
+                ctx.lineTo(1 + reach, -1);
+                ctx.stroke();
+                
+                // Scythe Blade
+                ctx.strokeStyle = '#3a3a3a';
+                ctx.beginPath();
+                ctx.moveTo(1 + reach, -1);
+                ctx.lineTo(1 + reach + (reach > 0 ? 3 : -3), -2);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        class Rider {
+            constructor() {
+                this.x = -30;
+                this.y = HORIZON_Y - 1; 
+                this.targetX = state.village.x + 5;
+                this.speed = 0.2 + Math.random() * 0.15;
+                this.dead = false;
+                this.horseColor = Math.random() > 0.5 ? '#3d2b1f' : '#1a1a1a';
+                this.cloakColor = Math.random() > 0.5 ? '#5c1a1a' : '#1a2a5c';
+            }
+            update(dt) {
+                this.x += this.speed * (dt / 16);
+                if (this.x > this.targetX) this.dead = true;
+            }
+            draw(ctx, time) {
+                const bounce = Math.abs(Math.sin(time * 0.008)) * 1.2;
+                ctx.save();
+                ctx.translate(Math.round(this.x), Math.round(this.y - bounce));
+                ctx.fillStyle = this.horseColor;
+                ctx.fillRect(0, 0, 5, 2); ctx.fillRect(4, -1, 2, 2); ctx.fillRect(1, 2, 1, 1); ctx.fillRect(4, 2, 1, 1);
+                ctx.fillStyle = this.cloakColor; ctx.fillRect(1, -2, 2, 2); ctx.fillStyle = '#d2b48c'; ctx.fillRect(2, -3, 1, 1);
+                const flutter = Math.sin(time * 0.02) * 1; ctx.fillStyle = this.cloakColor; ctx.fillRect(-1, -1, 2, 1 + flutter);
+                ctx.restore();
+            }
+        }
+
+        class Farm {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.buildings = [
+                    { dx: 0, w: 12, h: 10, roofH: 5, lights: Math.random() > 0.3 },
+                    { dx: 14, w: 8, h: 14, roofH: 7, lights: Math.random() > 0.3 }
+                ];
+            }
+            draw(ctx, timeOfDay) {
+                const color = (timeOfDay === 'TAG' || timeOfDay === 'MORGEN') ? '#0c160c' : '#030603';
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                
+                // Draw Fence (Zaun)
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(-8, -2); ctx.lineTo(35, -2); // Horizontal line
+                ctx.stroke();
+                for(let i=-8; i<=35; i+=7) {
+                    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, -3); ctx.stroke(); // Vertical posts
+                }
+
+                this.buildings.forEach(b => {
+                    ctx.fillStyle = color;
+                    ctx.fillRect(Math.round(b.dx), Math.round(-b.h), Math.round(b.w), Math.round(b.h));
+                    ctx.beginPath();
+                    ctx.moveTo(b.dx - 2, -b.h); ctx.lineTo(b.dx + b.w/2, -b.h - b.roofH); ctx.lineTo(b.dx + b.w + 2, -b.h);
+                    ctx.fill();
+                    if(b.lights && (timeOfDay === 'NACHT' || timeOfDay === 'ABEND')) {
+                        const alpha = timeOfDay === 'NACHT' ? 0.7 : 0.3;
+                        ctx.fillStyle = `rgba(255, 220, 80, ${alpha})`;
+                        ctx.fillRect(Math.round(b.dx + b.w/2 - 1), Math.round(-b.h + 3), 2, 2);
+                    }
+                });
+                ctx.restore();
+            }
+        }
+
+        class Village {
+            constructor() {
+                this.x = INTERNAL_W * 0.7;
+                this.y = HORIZON_Y;
+                this.buildings = [];
+                this.generateBuildings();
+            }
+            generateBuildings() {
+                const scale = 1.5;
+                // Add Church at the edge
+                this.buildings.push({ dx: 55, w: 22, h: 12, type: 'church-nave', roofH: 8 });
+                this.buildings.push({ dx: 72, w: 10, h: 32, type: 'church-tower', roofH: 15 });
+
+                this.buildings.push({ dx: 0, w: 18, h: 38, type: 'tower', roofH: 12 });
+                for(let i=0; i<6; i++) {
+                    const bw = (8 + Math.random() * 6) * scale;
+                    const bh = (8 + Math.random() * 8) * scale;
+                    this.buildings.push({
+                        dx: (i - 3) * 18 + (Math.random() * 6),
+                        w: bw, h: bh, type: 'house',
+                        lights: Math.random() > 0.3,
+                        roofH: 6
+                    });
+                }
+            }
+            draw(ctx, timeOfDay) {
+                const color = (timeOfDay === 'TAG' || timeOfDay === 'MORGEN') ? '#0a120a' : '#020502';
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                this.buildings.forEach(b => {
+                    ctx.fillStyle = color;
+                    ctx.fillRect(Math.round(b.dx), Math.round(-b.h), Math.round(b.w), Math.round(b.h));
+                    
+                    // Roofs
+                    ctx.beginPath();
+                    if(b.type === 'church-tower') {
+                        ctx.moveTo(b.dx - 1, -b.h); ctx.lineTo(b.dx + b.w/2, -b.h - b.roofH); ctx.lineTo(b.dx + b.w + 1, -b.h);
+                        ctx.fill();
+                        // Cross
+                        ctx.strokeStyle = color;
+                        ctx.beginPath(); ctx.moveTo(b.dx + b.w/2, -b.h - b.roofH); ctx.lineTo(b.dx + b.w/2, -b.h - b.roofH - 3); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(b.dx + b.w/2 - 1, -b.h - b.roofH - 2); ctx.lineTo(b.dx + b.w/2 + 1, -b.h - b.roofH - 2); ctx.stroke();
+                    } else if(b.type === 'tower') {
+                        ctx.moveTo(b.dx, -b.h); ctx.lineTo(b.dx + b.w/2, -b.h - b.roofH); ctx.lineTo(b.dx + b.w, -b.h);
+                        ctx.fill();
+                    } else {
+                        ctx.moveTo(b.dx - 3, -b.h); ctx.lineTo(b.dx + b.w/2, -b.h - b.roofH); ctx.lineTo(b.dx + b.w + 3, -b.h);
+                        ctx.fill();
+                    }
+
+                    if(b.lights && (timeOfDay === 'NACHT' || timeOfDay === 'ABEND')) {
+                        const alpha = timeOfDay === 'NACHT' ? 0.8 : 0.4;
+                        ctx.fillStyle = `rgba(255, 210, 60, ${alpha})`;
+                        ctx.fillRect(Math.round(b.dx + b.w/2 - 1), Math.round(-b.h + 5), 2, 2);
+                    }
+                });
+                ctx.restore();
+            }
+        }
+
+        class ForestPath {
+            constructor(targetX) {
+                this.targetX = targetX; 
+                this.points = [];
+                this.pebbles = [];
+                this.generatePath();
+                this.generatePebbles();
+            }
+            generatePath() {
+                const segments = 25;
+                const startX = INTERNAL_W * 0.3; 
+                for(let i=0; i <= segments; i++) {
+                    const t = i / segments;
+                    const x = startX + (this.targetX - startX) * Math.pow(t, 1.2) + Math.sin(t * 8) * 10;
+                    const y = INTERNAL_H - (INTERNAL_H - HORIZON_Y) * t;
+                    const width = 52 * (1 - t * 0.88);
+                    this.points.push({x, y, width});
+                }
+            }
+            generatePebbles() {
+                for(let i=0; i<85; i++) {
+                    const t = Math.random();
+                    const segIdx = Math.floor(t * (this.points.length - 1));
+                    const p1 = this.points[segIdx];
+                    const p2 = this.points[segIdx + 1] || p1;
+                    const localT = (t * (this.points.length - 1)) % 1;
+                    const curX = p1.x + (p2.x - p1.x) * localT;
+                    const curY = p1.y + (p2.y - p1.y) * localT;
+                    const curW = p1.width + (p2.width - p1.width) * localT;
+                    const offX = (Math.random() - 0.5) * curW;
+                    const size = 0.8 + Math.random() * 1.6 * (1 - t * 0.5);
+                    this.pebbles.push({ x: curX + offX, y: curY, size: size, brightness: 0.3 + Math.random() * 0.45 });
+                }
+            }
+            draw(ctx, timeOfDay) {
+                const isDay = timeOfDay === 'TAG' || timeOfDay === 'MORGEN';
+                const baseCol = isDay ? '#3d3025' : '#0f0c08';
+                const wearCol = isDay ? '#5a4d3f' : '#1a1612'; 
+                ctx.save();
+                ctx.beginPath(); ctx.fillStyle = baseCol;
+                this.points.forEach((p, i) => { if(i===0) ctx.moveTo(p.x - p.width/2, p.y); else ctx.lineTo(p.x - p.width/2, p.y); });
+                for(let i=this.points.length-1; i>=0; i--) { const p = this.points[i]; ctx.lineTo(p.x + p.width/2, p.y); }
+                ctx.fill();
+                ctx.beginPath(); ctx.fillStyle = wearCol;
+                this.points.forEach((p, i) => { const w = p.width * 0.42; if(i===0) ctx.moveTo(p.x - w/2, p.y); else ctx.lineTo(p.x - w/2, p.y); });
+                for(let i=this.points.length-1; i>=0; i--) { const p = this.points[i]; const w = p.width * 0.42; ctx.lineTo(p.x + w/2, p.y); }
+                ctx.fill();
+                this.pebbles.forEach(pb => {
+                    const depthAlpha = (pb.y - HORIZON_Y) / (INTERNAL_H - HORIZON_Y);
+                    const col = isDay ? 185 : 65;
+                    ctx.fillStyle = `rgba(${col},${col},${col}, ${pb.brightness * (0.4 + depthAlpha * 0.6)})`;
+                    ctx.fillRect(Math.round(pb.x), Math.round(pb.y), pb.size, pb.size);
+                });
+                ctx.restore();
+            }
+        }
+
+        class FogWisp {
+            constructor() { this.reset(); this.x = Math.random() * INTERNAL_W; }
+            reset() { this.x = -120; this.y = HORIZON_Y + Math.random() * (INTERNAL_H - HORIZON_Y); this.speed = 0.08 + Math.random() * 0.18; this.w = 50 + Math.random() * 70; this.h = 10 + Math.random() * 15; this.opacity = 0.04 + Math.random() * 0.08; }
+            update() { this.x += this.speed; if (this.x > INTERNAL_W + 120) this.reset(); }
+            draw(ctx) { const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.w/2); grad.addColorStop(0, `rgba(180, 200, 210, ${this.opacity})`); grad.addColorStop(1, `rgba(180, 200, 210, 0)`); ctx.fillStyle = grad; ctx.fillRect(this.x - this.w/2, this.y - this.h/2, this.w, this.h); }
+        }
+
+        class Cloud {
+            constructor() { this.reset(true); }
+            reset(randomX = false) { this.x = randomX ? Math.random() * INTERNAL_W : -100; this.y = Math.random() * (HORIZON_Y - 45); this.speed = 0.02 + Math.random() * 0.05; this.width = 50 + Math.random() * 60; this.height = 15 + Math.random() * 18; this.baseOpacity = 0.12 + Math.random() * 0.15; this.points = []; for(let i=0; i<8; i++) this.points.push({ rx: (Math.random() - 0.5) * this.width, ry: (Math.random() - 0.5) * this.height, rad: 7 + Math.random() * 11 }); }
+            update(dt) { this.x += this.speed * (dt / 16); if (this.x > INTERNAL_W + 120) this.reset(); }
+            draw(ctx, cycleProgress) { let cloudAlpha = (cycleProgress > 0.12 && cycleProgress < 0.92) ? Math.sin((cycleProgress - 0.12) / 0.8 * Math.PI) : 0; if (cloudAlpha <= 0) return; ctx.fillStyle = `rgba(220, 240, 255, ${this.baseOpacity * cloudAlpha})`; this.points.forEach(p => { ctx.beginPath(); ctx.arc(this.x + p.rx, this.y + p.ry, p.rad, 0, Math.PI * 2); ctx.fill(); }); }
+        }
+
+        class Firefly {
+            constructor(centerX, centerY) { this.originX = centerX; this.originY = centerY; this.reset(); this.life = 0; this.maxLife = 500 + Math.random() * 600; this.dead = false; this.phase = Math.random() * Math.PI * 2; }
+            reset() { this.relX = (Math.random() - 0.5) * 60; this.relY = (Math.random() - 0.5) * 45; this.driftSpeed = 0.001 + Math.random() * 0.002; }
+            update(time, dt, timeOfDay) { this.life += (dt / 16); if (this.life > this.maxLife || timeOfDay === 'TAG') { this.dead = true; return; } this.x = this.originX + this.relX + Math.sin(time * this.driftSpeed + this.phase) * 12; this.y = this.originY + this.relY + Math.cos(time * (this.driftSpeed * 0.9) + this.phase) * 8; const fadeRange = 70; this.opacity = (this.life < fadeRange) ? this.life / fadeRange : (this.life > this.maxLife - fadeRange ? (this.maxLife - this.life) / fadeRange : 0.2 + Math.abs(Math.sin(time * 0.002 + this.phase)) * 0.8); }
+            draw(ctx) { if (this.opacity <= 0) return; ctx.fillStyle = `rgba(210, 255, 120, ${this.opacity})`; ctx.fillRect(Math.round(this.x), Math.round(this.y), 1, 1); }
+        }
+
+        class Animal {
+            constructor(rowIdx) { const rand = Math.random(); if (rand > 0.96) this.type = ANIMAL_TYPES.DEER; else if (rand > 0.76) this.type = ANIMAL_TYPES.SQUIRREL; else if (rand > 0.46) this.type = ANIMAL_TYPES.RABBIT; else this.type = ANIMAL_TYPES.MOUSE; this.rowIdx = rowIdx; this.dir = Math.random() > 0.5 ? 1 : -1; this.x = this.dir === 1 ? -45 : INTERNAL_W + 45; this.df = [0.45, 0.6, 0.8, 1.0][rowIdx]; this.y = HORIZON_Y + (rowIdx * 45) + 18; this.speed = this.type.speed * this.df; this.size = this.type.size * this.df; this.dead = false; this.isPaused = false; this.nextActionTime = 0; }
+            update(dt, time) { if (time > this.nextActionTime) { this.isPaused = Math.random() > 0.7; this.nextActionTime = time + (this.isPaused ? 900 + Math.random() * 1600 : 2500 + Math.random() * 3500); } if (!this.isPaused || this.type.name === 'Deer') this.x += this.dir * this.speed * (dt / 16); if ((this.dir === 1 && this.x > INTERNAL_W + 120) || (this.dir === -1 && this.x < -120)) this.dead = true; }
+            draw(ctx, time) { let yOff = 0; if (!this.isPaused) { if (this.type.behavior === 'hop') yOff = -Math.abs(Math.sin(time * 0.012)) * 4; else if (this.type.behavior === 'scurry') yOff = Math.sin(time * 0.025) * 0.7; } ctx.save(); ctx.translate(Math.round(this.x), Math.round(this.y + yOff)); if (this.dir === -1) ctx.scale(-1, 1); ctx.fillStyle = this.type.colors[0]; if (this.type.name === 'Mouse') { ctx.fillRect(0, 0, this.size, this.size * 0.6); ctx.fillStyle = this.type.colors[1]; ctx.fillRect(this.size*0.7, -1, 1, 1); } else if (this.type.name === 'Rabbit') { ctx.fillRect(0, 0, this.size, this.size * 0.8); ctx.fillRect(this.size * 0.2, -this.size * 0.6, 1, this.size * 0.7); } else if (this.type.name === 'Squirrel') { ctx.fillRect(0, 0, this.size * 0.7, this.size * 0.7); ctx.fillStyle = this.type.colors[1]; ctx.fillRect(-2, -2, 3, 3); } else if (this.type.name === 'Deer') { const headY = Math.sin(time * 0.0012) * 2.5; ctx.fillRect(0, 0, this.size, this.size * 0.5); ctx.fillRect(this.size * 0.7, -this.size * 0.6 + headY, 2, this.size * 0.7); ctx.fillStyle = '#2a1a0a'; ctx.fillRect(this.size * 0.8, -this.size * 0.9 + headY, 4, 1); } ctx.restore(); }
+        }
+
+        class Bird {
+            constructor(rowIdx) { const isDay = state.timeOfDay === 'TAG' || state.timeOfDay === 'MORGEN'; let pool = isDay ? ['WOODPECKER', 'RAVEN'] : ['RAVEN', 'OWL']; this.type = BIRD_TYPES[pool[Math.floor(Math.random() * pool.length)]]; this.dir = Math.random() > 0.5 ? 1 : -1; this.x = this.dir === 1 ? -45 : INTERNAL_W + 45; this.df = [0.45, 0.6, 0.8, 1.0][rowIdx]; this.baseY = Math.random() * (HORIZON_Y - 35) + 12; this.y = this.baseY; this.speed = this.type.speed * this.df; this.size = this.type.size * this.df; this.wingState = 0; this.dead = false; }
+            update(dt, time) { this.x += this.dir * this.speed * (dt / 16); if (this.type.behavior === 'undulate') this.y = this.baseY + Math.sin(time * 0.006) * 12; this.wingState = Math.sin(time * this.type.wingSpeed); if ((this.dir === 1 && this.x > INTERNAL_W + 120) || (this.dir === -1 && this.x < -120)) this.dead = true; }
+            draw(ctx) { ctx.save(); ctx.translate(Math.round(this.x), Math.round(this.y)); if (this.dir === -1) { ctx.scale(-1, 1); ctx.translate(-this.size * 2, 0); } ctx.fillStyle = this.type.colors[0]; const wH = this.wingState * this.size * 1.6; ctx.fillRect(0, 0, this.size * 2, this.size * 0.8); ctx.beginPath(); ctx.moveTo(this.size, this.size/2); ctx.lineTo(0, this.size/2 + wH); ctx.lineTo(this.size * 0.6, this.size/2); ctx.fill(); ctx.restore(); }
+        }
+
+        class Tree {
+            constructor(x, y, typeKey, rowIdx) { this.x = x; this.y = y; this.type = TREE_TYPES[typeKey]; this.rowIdx = rowIdx; this.df = [0.45, 0.6, 0.8, 1.0][rowIdx]; this.h = this.type.height * this.df; this.w = this.type.width * this.df; this.swayOffset = Math.random() * Math.PI * 2; this.clusterSprites = []; this.trunkCanvas = document.createElement('canvas'); this.generateStructure(); }
+            generateStructure() { const style = this.type.style; const clusters = []; this.trunkCanvas.width = this.w; this.trunkCanvas.height = this.h + 10; const tctx = this.trunkCanvas.getContext('2d'); tctx.translate(this.w/2, this.h); tctx.fillStyle = this.type.trunk; tctx.beginPath(); tctx.moveTo(-this.w*0.07, 5); tctx.lineTo(this.w*0.07, 5); tctx.lineTo(this.w*0.02, -this.h*0.9); tctx.lineTo(-this.w*0.02, -this.h*0.9); tctx.fill(); if (style === 'broad') for (let i = 0; i < 12; i++) clusters.push({rx: (Math.random()-0.5)*this.w, ry: -this.h*0.3 - Math.random()*(this.h*0.6), rad: 8 + Math.random()*10}); else if (style === 'tiered') for (let i = 0; i < 6; i++) { const t = i/6; clusters.push({rx: 0, ry: -this.h + (t*this.h), radX: (this.w*(1-t))/2 + 2, radY: 7}); } else if (style === 'sparse') for (let i = 0; i < 12; i++) clusters.push({rx: (Math.random()-0.5)*this.w*0.6, ry: -this.h*0.2 - Math.random()*(this.h*0.75), rad: 4 + Math.random()*3}); else for (let i = 0; i < 8; i++) clusters.push({rx: (Math.random()-0.5)*this.w, ry: -this.h + (Math.random()*20), rad: 7 + Math.random()*8}); clusters.forEach(config => { const rX = config.radX || config.rad; const rY = config.radY || config.rad; const cCanvas = document.createElement('canvas'); cCanvas.width = rX*2+4; cCanvas.height = rY*2+4; const csctx = cCanvas.getContext('2d'); for (let py = -rY; py <= rY; py++) { for (let px = -rX; px <= rX; px++) { if ((px*px)/(rX*rX) + (py*py)/(rY*rY) <= 1) { const l = (px/rX)*0.6 + (py/rY)*0.9; csctx.fillStyle = this.type.colors[l < -0.25 ? 3 : (l < 0.1 ? 2 : (l < 0.5 ? 1 : 0))]; csctx.fillRect(px+rX, py+rY, 1, 1); } } } this.clusterSprites.push({ canvas: cCanvas, rx: config.rx, ry: config.ry, ox: rX, oy: rY }); }); }
+            draw(ctx, time) { const depth = (this.y - HORIZON_Y) / (INTERNAL_H - HORIZON_Y); ctx.save(); ctx.globalAlpha = 1.0 - (Math.max(0, 0.88 - depth) * (state.timeOfDay === 'TAG' ? 0.38 : 0.75)); const wind = Math.sin(time * 0.0008 + this.swayOffset) * 2; ctx.translate(Math.round(this.x), Math.round(this.y)); ctx.drawImage(this.trunkCanvas, -this.w/2, -this.h); this.clusterSprites.forEach(s => ctx.drawImage(s.canvas, Math.round(s.rx + wind * (Math.abs(s.ry)/this.h) - s.ox), Math.round(s.ry - s.oy))); ctx.restore(); }
+        }
+
+        class Grass {
+            constructor(x, y) { this.x = x; this.y = y; this.h = 2 + Math.random() * 5; this.sway = Math.random() * Math.PI; const g = 40 + Math.random() * 40; this.color = `rgb(${g*0.2}, ${g}, ${g*0.4})`; }
+            draw(ctx, time) { const s = Math.sin(time * 0.004 + this.sway) * 1.5; ctx.strokeStyle = this.color; ctx.beginPath(); ctx.moveTo(Math.round(this.x), Math.round(this.y)); ctx.lineTo(Math.round(this.x + s), Math.round(this.y - this.h)); ctx.stroke(); }
+        }
+
+        function init() {
+            state.entities = []; state.animals = []; state.birds = []; state.riders = []; state.fireflies = []; state.stars = []; state.clouds = []; state.fogWisps = []; state.farms = []; state.farmers = [];
+            state.village = new Village(); state.forestPath = new ForestPath(state.village.x);
+            
+            // Spawn Farms
+            const farm1X = INTERNAL_W * 0.35;
+            const farm2X = INTERNAL_W * 0.12;
+            state.farms.push(new Farm(farm1X, HORIZON_Y));
+            state.farms.push(new Farm(farm2X, HORIZON_Y));
+            
+            // Spawn Farmers at each farm
+            state.farmers.push(new Farmer(farm1X + 28, HORIZON_Y));
+            state.farmers.push(new Farmer(farm2X + 28, HORIZON_Y));
+
+            for(let i=0; i<180; i++) state.stars.push({x: Math.random()*INTERNAL_W, y: Math.random()*(HORIZON_Y-20), b: 0.3 + Math.random()*0.7});
+            for(let i=0; i<6; i++) state.clouds.push(new Cloud());
+            for(let i=0; i<5; i++) state.fogWisps.push(new FogWisp());
+            const rowCount = 4; const rowH = (INTERNAL_H - HORIZON_Y) / rowCount;
+            for(let row = 0; row < rowCount; row++) {
+                for(let i = 0; i < 15; i++) {
+                    const tx = Math.random()*INTERNAL_W; const pathX = state.forestPath.points[Math.floor((row/rowCount)*24)]?.x || 0;
+                    if (Math.abs(tx - pathX) > 40) state.entities.push(new Tree(tx, HORIZON_Y + (row * rowH) + (rowH * 0.3) + (Math.random() * rowH * 0.3), Object.keys(TREE_TYPES)[Math.floor(Math.random()*5)], row));
+                }
+            }
+            for(let i=0; i<600; i++) state.entities.push(new Grass(Math.random()*INTERNAL_W, HORIZON_Y + Math.random()*(INTERNAL_H-HORIZON_Y)));
+            state.entities.sort((a,b) => (a.y || 0) - (b.y || 0));
+        }
+
+        function render(timestamp) {
+            const dt = timestamp - state.lastTime; state.lastTime = timestamp; state.time = timestamp;
+            state.cycleProgress = (timestamp % CYCLE_DURATION) / CYCLE_DURATION;
+            const skyColors = getSkyColors(state.cycleProgress); state.timeOfDay = skyColors.name;
+            uiStatus.innerText = `Woods Engine v1.27.0 | Zeit: ${skyColors.name} (${Math.round(state.cycleProgress * 100)}%)`;
+
+            const isDay = state.timeOfDay !== 'NACHT';
+            if (timestamp > state.nextAnimalSpawn) { state.animals.push(new Animal(Math.floor(Math.random()*4))); state.nextAnimalSpawn = timestamp + (2800 + Math.random()*5500); }
+            if (timestamp > state.nextBirdSpawn) { state.birds.push(new Bird(Math.floor(Math.random()*4))); state.nextBirdSpawn = timestamp + (4800 + Math.random()*9500); }
+            if (isDay && timestamp > state.nextRiderSpawn) { state.riders.push(new Rider()); state.nextRiderSpawn = timestamp + (15000 + Math.random()*25000); }
+            if (timestamp > state.nextSwarmSpawn && (state.timeOfDay === 'NACHT' || state.timeOfDay === 'ABEND')) {
+                const swX = Math.random()*INTERNAL_W; const swY = HORIZON_Y+15+Math.random()*(INTERNAL_H-HORIZON_Y-45);
+                for(let i=0; i<12; i++) state.fireflies.push(new Firefly(swX, swY)); state.nextSwarmSpawn = timestamp + 25000;
+            }
+
+            ctx.clearRect(0,0,INTERNAL_W, INTERNAL_H); const camX = Math.sin(timestamp * 0.0003) * 1.5;
+            ctx.save();
+            const sky = ctx.createLinearGradient(0,0,0,HORIZON_Y); sky.addColorStop(0, skyColors.top); sky.addColorStop(1, skyColors.bot); ctx.fillStyle = sky; ctx.fillRect(0,0,INTERNAL_W, HORIZON_Y);
+            if (state.timeOfDay !== 'TAG') state.stars.forEach(s => { ctx.fillStyle = `rgba(220, 255, 240, ${s.b * (state.timeOfDay === 'NACHT' ? 1 : 0.4)})`; ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1); });
+            if (state.timeOfDay === 'NACHT' || state.timeOfDay === 'ABEND') { ctx.fillStyle = 'rgba(230, 255, 240, 0.45)'; ctx.beginPath(); ctx.arc(400, 30, 8, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = skyColors.top; ctx.beginPath(); ctx.arc(396, 28, 8, 0, Math.PI*2); ctx.fill(); }
+            else if (state.timeOfDay === 'TAG' || state.timeOfDay === 'MORGEN') { ctx.fillStyle = 'rgba(255, 255, 210, 0.88)'; ctx.beginPath(); ctx.arc(100, 40, 12, 0, Math.PI*2); ctx.fill(); }
+            state.clouds.forEach(c => { c.update(dt); c.draw(ctx, state.cycleProgress); });
+            
+            state.riders.forEach(r => { r.update(dt); r.draw(ctx, timestamp); });
+            state.riders = state.riders.filter(r => !r.dead);
+
+            // Draw Farms, Village & Farmer
+            state.farms.forEach(f => f.draw(ctx, state.timeOfDay));
+            state.village.draw(ctx, state.timeOfDay);
+            state.farmers.forEach(f => f.draw(ctx, timestamp, state.timeOfDay));
+
+            ctx.translate(Math.round(camX), 0);
+            const nightTop = hexToRgb('#0c1a0c'); const dayTop = hexToRgb('#284528');
+            const gTop = lerpColor(nightTop, dayTop, (state.timeOfDay === 'TAG' ? 1 : (state.timeOfDay === 'MORGEN' ? 0.5 : 0)));
+            const g = ctx.createLinearGradient(0,HORIZON_Y,0,INTERNAL_H); g.addColorStop(0, gTop); g.addColorStop(1, '#010301'); ctx.fillStyle = g; ctx.fillRect(0,HORIZON_Y,INTERNAL_W, INTERNAL_H - HORIZON_Y);
+
+            state.forestPath.draw(ctx, state.timeOfDay);
+            state.fogWisps.forEach(w => { w.update(); w.draw(ctx); });
+
+            const all = [...state.entities, ...state.animals, ...state.birds];
+            all.sort((a,b) => (a instanceof Bird ? HORIZON_Y : (a.y || 0)) - (b instanceof Bird ? HORIZON_Y : (b.y || 0)));
+            all.forEach(e => { if (e instanceof Animal || e instanceof Bird) { e.update(dt, timestamp); e.draw(ctx, timestamp); } else e.draw(ctx, timestamp); });
+
+            state.fireflies.forEach(f => { f.update(timestamp, dt, state.timeOfDay); f.draw(ctx); });
+            state.animals = state.animals.filter(a => !a.dead); state.birds = state.birds.filter(b => !b.dead); state.fireflies = state.fireflies.filter(f => !f.dead);
+            ctx.restore(); requestAnimationFrame(render);
+        }
+        window.onload = () => { init(); requestAnimationFrame(render); };
+    </script>
+</body>
+</html>
