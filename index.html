@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Woods Engine - v1.29.1</title>
+    <title>Screensaver Woods - v1.29.2</title>
     <style>
         :root {
             --bg-color: #010402;
@@ -50,12 +50,12 @@
 <body>
 
     <canvas id="woodsCanvas"></canvas>
-    <div class="version-badge" id="uiStatus">Woods Engine v1.29.1 | Lade...</div>
+    <div class="version-badge" id="uiStatus">Screensaver Woods v1.29.2 | Lade...</div>
 
     <script>
         /**
-         * Woods Engine v1.29.1
-         * PATCH: Limited active chimneys to 3 and slowed down smoke particle physics.
+         * Screensaver Woods v1.29.2
+         * PATCH: Renamed the project from "Woods Engine" to "Screensaver Woods".
          */
 
         const canvas = document.getElementById('woodsCanvas');
@@ -162,10 +162,10 @@
                 this.x = x;
                 this.y = y;
                 this.vx = (Math.random() - 0.5) * 0.15;
-                this.vy = -0.12 - Math.random() * 0.18; // Slowed down from 0.3+
+                this.vy = -0.12 - Math.random() * 0.18;
                 this.size = 1 + Math.random() * 2;
                 this.life = 1.0;
-                this.decay = 0.003 + Math.random() * 0.006; // Slowed down fade from 0.005+
+                this.decay = 0.003 + Math.random() * 0.006;
             }
             update(wind) {
                 this.x += this.vx + wind * 1.2;
@@ -205,7 +205,6 @@
                 });
                 ctx.closePath();
                 ctx.fill();
-                // Highlight
                 ctx.strokeStyle = isDay ? '#4a4a4a' : '#1a1a1a';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
@@ -464,12 +463,10 @@
             state.farms.push(new Farm(farm1X, HORIZON_Y)); state.farms.push(new Farm(farm2X, HORIZON_Y));
             state.farmers.push(new Farmer(farm1X + 28, HORIZON_Y)); state.farmers.push(new Farmer(farm2X + 28, HORIZON_Y));
 
-            // SMOKE RANDOMIZER: Pick exactly 3 active smokers globally
             const chimneyOwners = [];
             state.farms.forEach(f => f.buildings.forEach(b => { if(b.chimney) chimneyOwners.push(b); }));
             state.village.buildings.forEach(b => { if(b.chimney) chimneyOwners.push(b); });
             
-            // Randomly pick 3
             for(let i=0; i<3 && chimneyOwners.length > 0; i++) {
                 const idx = Math.floor(Math.random() * chimneyOwners.length);
                 chimneyOwners[idx].smokeActive = true;
@@ -508,7 +505,7 @@
             const dt = timestamp - state.lastTime; state.lastTime = timestamp; state.time = timestamp;
             state.cycleProgress = (timestamp % CYCLE_DURATION) / CYCLE_DURATION;
             const skyColors = getSkyColors(state.cycleProgress); state.timeOfDay = skyColors.name;
-            uiStatus.innerText = `Woods Engine v1.29.1 | Zeit: ${skyColors.name} (${Math.round(state.cycleProgress * 100)}%)`;
+            uiStatus.innerText = `Screensaver Woods v1.29.2 | Zeit: ${skyColors.name} (${Math.round(state.cycleProgress * 100)}%)`;
 
             const isDay = state.timeOfDay !== 'NACHT';
             const wind = Math.sin(timestamp * 0.0002) * 0.1;
