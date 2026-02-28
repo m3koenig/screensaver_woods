@@ -2,6 +2,16 @@
 
 Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert. Das Projekt nutzt Semantic Versioning (SemVer).
 
+## **\[1.31.0\] \- 2024-05-24**
+
+### **Verbessert**
+
+* **Intelligente Welt-Generierung**:  
+  * **Kollisionsvermeidung**: Der Platzierungs-Algorithmus für den See wurde überarbeitet. Er prüft nun aktiv auf Überschneidungen mit dem Waldweg und hält einen Sicherheitsabstand zum Dorf ein. Dies verhindert unnatürliche Überlagerungen wichtiger Landschaftselemente.  
+* **Tiefensortierung (Z-Indexing)**:  
+  * Implementierung eines stabilen Sortier-Algorithmus, der alle Entitäten (inklusive der neuen Hunde und Felsen) präzise voreinander oder hintereinander rendert.  
+  * Besondere Berücksichtigung finden nun fliegende Objekte wie Libellen und Vögel, die unabhängig von ihrer vertikalen Position korrekt über den jeweiligen Boden-Layern gezeichnet werden.
+
 ## **\[1.30.1\] \- 2024-05-23**
 
 ### **Optimiert**

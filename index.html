@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Screensaver Woods - v1.30.1</title>
+    <title>Screensaver Woods - v1.31.0</title>
     <style>
         :root {
             --bg-color: #010402;
@@ -50,13 +50,14 @@
 <body>
 
     <canvas id="woodsCanvas"></canvas>
-    <div class="version-badge" id="uiStatus">Screensaver Woods v1.30.1 | Lade...</div>
+    <div class="version-badge" id="uiStatus">Screensaver Woods v1.31.0 | Lade...</div>
 
     <script>
         /**
-         * Screensaver Woods v1.30.1
-         * PATCH: Added atmospheric depth lighting to Dogs.
-         * Refined Farmer AI to keep daily routines local to their specific farms.
+         * Screensaver Woods v1.31.0
+         * MINOR: Improved World Generation.
+         * - Collision Avoidance: Lake placement now avoids both the Forest Path and the Village area.
+         * - Refined Depth Sorting: Stable Z-Indexing for all entities including Rocks and Dogs.
          */
 
         const canvas = document.getElementById('woodsCanvas');
@@ -387,7 +388,7 @@
                 const depth = (this.y - HORIZON_Y) / (INTERNAL_H - HORIZON_Y);
                 
                 ctx.save();
-                // Apply atmospheric depth effect (same as trees/grass)
+                // Apply atmospheric depth effect
                 ctx.globalAlpha = 1.0 - (Math.max(0, 0.88 - depth) * (timeOfDay === 'TAG' ? 0.38 : 0.75));
                 
                 ctx.translate(Math.round(this.x), Math.round(this.y));
@@ -412,23 +413,21 @@
         class Farmer {
             constructor(x, y) { 
                 this.homeX = x + 28; 
-                // Work area is relative to their specific farm home
                 this.workX = this.homeX - 15 - Math.random() * 25; 
                 this.x = this.homeX; 
                 this.y = y; 
                 this.skinColor = SKIN_TONES[Math.floor(Math.random() * SKIN_TONES.length)]; 
-                this.state = 'IDLE'; // IDLE, WALKING_TO_WORK, WORKING, WALKING_HOME
+                this.state = 'IDLE'; 
                 this.speed = 0.22;
             }
             update(dt, time, timeOfDay) {
-                // Tagesablauf Logik - Synchronized with the world cycle
                 if ((timeOfDay === 'MORGEN' || timeOfDay === 'TAG') && this.state === 'IDLE') {
                     this.state = 'WALKING_TO_WORK';
                 } else if (timeOfDay === 'ABEND' && (this.state === 'WORKING' || this.state === 'WALKING_TO_WORK')) {
                     this.state = 'WALKING_HOME';
                 } else if (timeOfDay === 'NACHT') {
                     this.state = 'IDLE';
-                    this.x = this.homeX; // Teleport home at night for simplicity
+                    this.x = this.homeX; 
                 }
 
                 if (this.state === 'WALKING_TO_WORK') {
@@ -451,17 +450,13 @@
                 const depth = (this.y - HORIZON_Y) / (INTERNAL_H - HORIZON_Y);
 
                 ctx.save(); 
-                // Atmospheric lighting
                 ctx.globalAlpha = 1.0 - (Math.max(0, 0.88 - depth) * (timeOfDay === 'TAG' ? 0.38 : 0.75));
                 
                 ctx.translate(Math.round(this.x), Math.round(this.y)); 
-                // Body
                 ctx.fillStyle = '#0a0c0a'; 
                 ctx.fillRect(0, -5, 2, 5); 
-                // Head
                 ctx.fillStyle = this.skinColor; 
                 ctx.fillRect(0, -7, 2, 2); 
-                // Tool / Interaction
                 ctx.strokeStyle = '#1a1a1a'; 
                 ctx.lineWidth = 1; 
                 ctx.beginPath(); 
@@ -469,7 +464,6 @@
                 const reach = swing * 6; 
                 ctx.lineTo(1 + reach, -1); 
                 ctx.stroke(); 
-                // Tool Head (Hacke/Schippe)
                 if (isWorking) {
                     ctx.strokeStyle = '#3a3a3a'; 
                     ctx.beginPath(); 
@@ -558,9 +552,7 @@
         class FogWisp { constructor() { this.reset(); this.x = Math.random() * INTERNAL_W; } reset() { this.x = -120; this.y = HORIZON_Y + Math.random() * (INTERNAL_H - HORIZON_Y); this.speed = 0.08 + Math.random() * 0.18; this.w = 50 + Math.random() * 70; this.h = 10 + Math.random() * 15; this.opacity = 0.04 + Math.random() * 0.08; } update() { this.x += this.speed; if (this.x > INTERNAL_W + 120) this.reset(); } draw(ctx) { const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.w/2); grad.addColorStop(0, `rgba(180, 200, 210, ${this.opacity})`); grad.addColorStop(1, `rgba(180, 200, 210, 0)`); ctx.fillStyle = grad; ctx.fillRect(this.x - this.w/2, this.y - this.h/2, this.w, this.h); } }
         class Cloud { constructor() { this.reset(true); } reset(randomX = false) { this.x = randomX ? Math.random() * INTERNAL_W : -100; this.y = Math.random() * (HORIZON_Y - 45); this.speed = 0.02 + Math.random() * 0.05; this.width = 50 + Math.random() * 60; this.height = 15 + Math.random() * 18; this.baseOpacity = 0.12 + Math.random() * 0.15; this.points = []; for(let i=0; i<8; i++) this.points.push({ rx: (Math.random() - 0.5) * this.width, ry: (Math.random() - 0.5) * this.height, rad: 7 + Math.random() * 11 }); } update(dt) { this.x += this.speed * (dt / 16); if (this.x > INTERNAL_W + 120) this.reset(); } draw(ctx, cycleProgress) { let cloudAlpha = (cycleProgress > 0.12 && cycleProgress < 0.92) ? Math.sin((cycleProgress - 0.12) / 0.8 * Math.PI) : 0; if (cloudAlpha <= 0) return; ctx.fillStyle = `rgba(220, 240, 255, ${this.baseOpacity * cloudAlpha})`; this.points.forEach(p => { ctx.beginPath(); ctx.arc(this.x + p.rx, this.y + p.ry, p.rad, 0, Math.PI * 2); ctx.fill(); }); } }
         class Firefly { constructor(centerX, centerY) { this.originX = centerX; this.originY = centerY; this.reset(); this.life = 0; this.maxLife = 500 + Math.random() * 600; this.dead = false; this.phase = Math.random() * Math.PI * 2; } reset() { this.relX = (Math.random() - 0.5) * 60; this.relY = (Math.random() - 0.5) * 45; this.driftSpeed = 0.001 + Math.random() * 0.002; } update(time, dt, timeOfDay) { this.life += (dt / 16); if (this.life > this.maxLife || timeOfDay === 'TAG') { this.dead = true; return; } this.x = this.originX + this.relX + Math.sin(time * this.driftSpeed + this.phase) * 12; this.y = this.originY + this.relY + Math.cos(time * (this.driftSpeed * 0.9) + this.phase) * 8; const fadeRange = 70; this.opacity = (this.life < fadeRange) ? this.life / fadeRange : (this.life > this.maxLife - fadeRange ? (this.maxLife - this.life) / fadeRange : 0.2 + Math.abs(Math.sin(time * 0.002 + this.phase)) * 0.8); } draw(ctx) { if (this.opacity <= 0) return; ctx.fillStyle = `rgba(210, 255, 120, ${this.opacity})`; ctx.fillRect(Math.round(this.x), Math.round(this.y), 1, 1); } }
-        class Animal { constructor(rowIdx) { const rand = Math.random(); if (rand > 0.96) this.type = ANIMAL_TYPES.DEER; else if (rand > 0.76) this.type = ANIMAL_TYPES.SQUIRREL; else if (rand > 0.46) this.type = ANIMAL_TYPES.RABBIT; else this.type = ANIMAL_TYPES.MOUSE; this.rowIdx = rowIdx; this.dir = Math.random() > 0.5 ? 1 : -1; this.x = this.dir === 1 ? -45 : INTERNAL_W + 45; this.df = [0.45, 0.6, 0.8, 1.0][rowIdx]; this.y = HORIZON_Y + (rowIdx * 45) + 18; this.speed = this.type.speed * this.df; this.size = this.type.size * this.df; this.dead = false; this.isPaused = false; this.nextActionTime = 0; } update(dt, time) { if (time > this.nextActionTime) { this.isPaused = Math.random() > 0.7; this.nextActionTime = time + (this.isPaused ? 900 + Math.random() * 1600 : 2500 + Math.random() * 3500); } // Enhanced AI: Grazing for Deer
-                if (this.type.name === 'Deer' && this.isPaused) { /* Graze behavior */ }
-                else if (!this.isPaused) this.x += this.dir * this.speed * (dt / 16); if ((this.dir === 1 && this.x > INTERNAL_W + 120) || (this.dir === -1 && this.x < -120)) this.dead = true; } draw(ctx, time) { let yOff = 0; if (!this.isPaused) { if (this.type.behavior === 'hop') yOff = -Math.abs(Math.sin(time * 0.012)) * 4; else if (this.type.behavior === 'scurry') yOff = Math.sin(time * 0.025) * 0.7; } else if (this.type.name === 'Deer') { yOff = Math.sin(time * 0.003) * 1.5; /* Graze head movement */ } ctx.save(); ctx.translate(Math.round(this.x), Math.round(this.y + yOff)); if (this.dir === -1) ctx.scale(-1, 1); ctx.fillStyle = this.type.colors[0]; if (this.type.name === 'Mouse') { ctx.fillRect(0, 0, this.size, this.size * 0.6); ctx.fillStyle = this.type.colors[1]; ctx.fillRect(this.size*0.7, -1, 1, 1); } else if (this.type.name === 'Rabbit') { ctx.fillRect(0, 0, this.size, this.size * 0.8); ctx.fillRect(this.size * 0.2, -this.size * 0.6, 1, this.size * 0.7); } else if (this.type.name === 'Squirrel') { ctx.fillRect(0, 0, this.size * 0.7, this.size * 0.7); ctx.fillStyle = this.type.colors[1]; ctx.fillRect(-2, -2, 3, 3); } else if (this.type.name === 'Deer') { const headY = (this.isPaused ? 3 : 0) + Math.sin(time * 0.0012) * 2.5; ctx.fillRect(0, 0, this.size, this.size * 0.5); ctx.fillRect(this.size * 0.7, -this.size * 0.6 + headY, 2, this.size * 0.7); ctx.fillStyle = '#2a1a0a'; ctx.fillRect(this.size * 0.8, -this.size * 0.9 + headY, 4, 1); } ctx.restore(); } }
+        class Animal { constructor(rowIdx) { const rand = Math.random(); if (rand > 0.96) this.type = ANIMAL_TYPES.DEER; else if (rand > 0.76) this.type = ANIMAL_TYPES.SQUIRREL; else if (rand > 0.46) this.type = ANIMAL_TYPES.RABBIT; else this.type = ANIMAL_TYPES.MOUSE; this.rowIdx = rowIdx; this.dir = Math.random() > 0.5 ? 1 : -1; this.x = this.dir === 1 ? -45 : INTERNAL_W + 45; this.df = [0.45, 0.6, 0.8, 1.0][rowIdx]; this.y = HORIZON_Y + (rowIdx * 45) + 18; this.speed = this.type.speed * this.df; this.size = this.type.size * this.df; this.dead = false; this.isPaused = false; this.nextActionTime = 0; } update(dt, time) { if (time > this.nextActionTime) { this.isPaused = Math.random() > 0.7; this.nextActionTime = time + (this.isPaused ? 900 + Math.random() * 1600 : 2500 + Math.random() * 3500); } if (!this.isPaused) this.x += this.dir * this.speed * (dt / 16); if ((this.dir === 1 && this.x > INTERNAL_W + 120) || (this.dir === -1 && this.x < -120)) this.dead = true; } draw(ctx, time) { let yOff = 0; if (!this.isPaused) { if (this.type.behavior === 'hop') yOff = -Math.abs(Math.sin(time * 0.012)) * 4; else if (this.type.behavior === 'scurry') yOff = Math.sin(time * 0.025) * 0.7; } ctx.save(); ctx.translate(Math.round(this.x), Math.round(this.y + yOff)); if (this.dir === -1) ctx.scale(-1, 1); ctx.fillStyle = this.type.colors[0]; if (this.type.name === 'Mouse') { ctx.fillRect(0, 0, this.size, this.size * 0.6); ctx.fillStyle = this.type.colors[1]; ctx.fillRect(this.size*0.7, -1, 1, 1); } else if (this.type.name === 'Rabbit') { ctx.fillRect(0, 0, this.size, this.size * 0.8); ctx.fillRect(this.size * 0.2, -this.size * 0.6, 1, this.size * 0.7); } else if (this.type.name === 'Squirrel') { ctx.fillRect(0, 0, this.size * 0.7, this.size * 0.7); ctx.fillStyle = this.type.colors[1]; ctx.fillRect(-2, -2, 3, 3); } else if (this.type.name === 'Deer') { const headY = (this.isPaused ? 3 : 0) + Math.sin(time * 0.0012) * 2.5; ctx.fillRect(0, 0, this.size, this.size * 0.5); ctx.fillRect(this.size * 0.7, -this.size * 0.6 + headY, 2, this.size * 0.7); ctx.fillStyle = '#2a1a0a'; ctx.fillRect(this.size * 0.8, -this.size * 0.9 + headY, 4, 1); } ctx.restore(); } }
         class Bird { constructor(rowIdx) { const isDay = state.timeOfDay === 'TAG' || state.timeOfDay === 'MORGEN'; let pool = isDay ? ['WOODPECKER', 'RAVEN'] : ['RAVEN', 'OWL']; this.type = BIRD_TYPES[pool[Math.floor(Math.random() * pool.length)]]; this.dir = Math.random() > 0.5 ? 1 : -1; this.x = this.dir === 1 ? -45 : INTERNAL_W + 45; this.df = [0.45, 0.6, 0.8, 1.0][rowIdx]; this.baseY = Math.random() * (HORIZON_Y - 35) + 12; this.y = this.baseY; this.speed = this.type.speed * this.df; this.size = this.type.size * this.df; this.wingState = 0; this.dead = false; } update(dt, time) { this.x += this.dir * this.speed * (dt / 16); if (this.type.behavior === 'undulate') this.y = this.baseY + Math.sin(time * 0.006) * 12; this.wingState = Math.sin(time * this.type.wingSpeed); if ((this.dir === 1 && this.x > INTERNAL_W + 120) || (this.dir === -1 && this.x < -120)) this.dead = true; } draw(ctx) { ctx.save(); ctx.translate(Math.round(this.x), Math.round(this.y)); if (this.dir === -1) { ctx.scale(-1, 1); ctx.translate(-this.size * 2, 0); } ctx.fillStyle = this.type.colors[0]; const wH = this.wingState * this.size * 1.6; ctx.fillRect(0, 0, this.size * 2, this.size * 0.8); ctx.beginPath(); ctx.moveTo(this.size, this.size/2); ctx.lineTo(0, this.size/2 + wH); ctx.lineTo(this.size * 0.6, this.size/2); ctx.fill(); ctx.restore(); } }
         class Tree { constructor(x, y, typeKey, rowIdx) { this.x = x; this.y = y; this.type = TREE_TYPES[typeKey]; this.rowIdx = rowIdx; this.df = [0.45, 0.6, 0.8, 1.0][rowIdx]; this.h = this.type.height * this.df; this.w = this.type.width * this.df; this.swayOffset = Math.random() * Math.PI * 2; this.clusterSprites = []; this.trunkCanvas = document.createElement('canvas'); this.generateStructure(); } generateStructure() { const style = this.type.style; const clusters = []; this.trunkCanvas.width = this.w; this.trunkCanvas.height = this.h + 10; const tctx = this.trunkCanvas.getContext('2d'); tctx.translate(this.w/2, this.h); tctx.fillStyle = this.type.trunk; tctx.beginPath(); tctx.moveTo(-this.w*0.07, 5); tctx.lineTo(this.w*0.07, 5); tctx.lineTo(this.w*0.02, -this.h*0.9); tctx.lineTo(-this.w*0.02, -this.h*0.9); tctx.fill(); if (style === 'broad') for (let i = 0; i < 12; i++) clusters.push({rx: (Math.random()-0.5)*this.w, ry: -this.h*0.3 - Math.random()*(this.h*0.6), rad: 8 + Math.random()*10}); else if (style === 'tiered') for (let i = 0; i < 6; i++) { const t = i/6; clusters.push({rx: 0, ry: -this.h + (t*this.h), radX: (this.w*(1-t))/2 + 2, radY: 7}); } else if (style === 'sparse') for (let i = 0; i < 12; i++) clusters.push({rx: (Math.random()-0.5)*this.w*0.6, ry: -this.h*0.2 - Math.random()*(this.h*0.75), rad: 4 + Math.random()*3}); else for (let i = 0; i < 8; i++) clusters.push({rx: (Math.random()-0.5)*this.w, ry: -this.h + (Math.random()*20), rad: 7 + Math.random()*8}); clusters.forEach(config => { const rX = config.radX || config.rad; const rY = config.radY || config.rad; const cCanvas = document.createElement('canvas'); cCanvas.width = rX*2+4; cCanvas.height = rY*2+4; const csctx = cCanvas.getContext('2d'); for (let py = -rY; py <= rY; py++) { for (let px = -rX; px <= rX; px++) { if ((px*px)/(rX*rX) + (py*py)/(rY*rY) <= 1) { const l = (px/rX)*0.6 + (py/rY)*0.9; csctx.fillStyle = this.type.colors[l < -0.25 ? 3 : (l < 0.1 ? 2 : (l < 0.5 ? 1 : 0))]; csctx.fillRect(px+rX, py+rY, 1, 1); } } } this.clusterSprites.push({ canvas: cCanvas, rx: config.rx, ry: config.ry, ox: rX, oy: rY }); }); } draw(ctx, time) { const depth = (this.y - HORIZON_Y) / (INTERNAL_H - HORIZON_Y); ctx.save(); ctx.globalAlpha = 1.0 - (Math.max(0, 0.88 - depth) * (state.timeOfDay === 'TAG' ? 0.38 : 0.75)); const wind = Math.sin(time * 0.0008 + this.swayOffset) * 2; ctx.translate(Math.round(this.x), Math.round(this.y)); ctx.drawImage(this.trunkCanvas, -this.w/2, -this.h); this.clusterSprites.forEach(s => ctx.drawImage(s.canvas, Math.round(s.rx + wind * (Math.abs(s.ry)/this.h) - s.ox), Math.round(s.ry - s.oy))); ctx.restore(); } }
         class Grass { constructor(x, y, isTall = false) { this.x = x; this.y = y; this.h = (isTall ? 8 : 2) + Math.random() * (isTall ? 10 : 5); this.sway = Math.random() * Math.PI; const g = (isTall ? 60 : 40) + Math.random() * 40; this.color = `rgb(${g*0.2}, ${g}, ${g*0.4})`; } draw(ctx, time) { const s = Math.sin(time * 0.004 + this.sway) * 1.5; ctx.strokeStyle = this.color; ctx.beginPath(); ctx.moveTo(Math.round(this.x), Math.round(this.y)); ctx.lineTo(Math.round(this.x + s), Math.round(this.y - this.h)); ctx.stroke(); } }
@@ -573,13 +565,22 @@
 
             const lrX = 40; const lrY = 22;
             let lakeX = 0, lakeY = 0, validSpot = false; let attempts = 0;
-            while(!validSpot && attempts < 100) {
-                lakeX = 60 + Math.random() * (INTERNAL_W - 120); lakeY = HORIZON_Y + 40 + Math.random() * (INTERNAL_H - HORIZON_Y - 80);
+            
+            // Intelligente See-Platzierung (Kollisionsvermeidung mit Pfad und Dorf)
+            while(!validSpot && attempts < 150) {
+                lakeX = 60 + Math.random() * (INTERNAL_W - 120); 
+                lakeY = HORIZON_Y + 40 + Math.random() * (INTERNAL_H - HORIZON_Y - 80);
+                
                 const onPath = state.forestPath.points.some(p => {
                     const dx = lakeX - p.x; const dy = lakeY - p.y;
-                    return Math.sqrt(dx*dx + dy*dy) < (p.width/2 + lrX + 10);
+                    return Math.sqrt(dx*dx + dy*dy) < (p.width/2 + lrX + 15);
                 });
-                if(!onPath) validSpot = true; attempts++;
+                
+                // Vermeidung des Dorf-Bereichs (Dorf-X ist ca. 0.7 * W)
+                const nearVillage = Math.abs(lakeX - state.village.x) < (lrX + 70);
+
+                if(!onPath && !nearVillage) validSpot = true; 
+                attempts++;
             }
             state.lake = new Lake(lakeX, lakeY, lrX, lrY);
 
@@ -635,7 +636,7 @@
             const dt = timestamp - state.lastTime; state.lastTime = timestamp; state.time = timestamp;
             state.cycleProgress = (timestamp % CYCLE_DURATION) / CYCLE_DURATION;
             const skyColors = getSkyColors(state.cycleProgress); state.timeOfDay = skyColors.name;
-            uiStatus.innerText = `Screensaver Woods v1.30.1 | Zeit: ${skyColors.name} (${Math.round(state.cycleProgress * 100)}%)`;
+            uiStatus.innerText = `Screensaver Woods v1.31.0 | Zeit: ${skyColors.name} (${Math.round(state.cycleProgress * 100)}%)`;
 
             const isDay = state.timeOfDay !== 'NACHT';
             const wind = Math.sin(timestamp * 0.0002) * 0.1;
@@ -678,12 +679,24 @@
             state.fogWisps.forEach(w => { w.update(); w.draw(ctx); });
             state.lake.draw(ctx, state.timeOfDay);
 
-            // Global Depth Sorting - inclusive Dragonflies and Dogs
+            // VERBESSERTE TIEFEN-SORTIERUNG (Stable Z-Indexing)
             const all = [...state.entities, ...state.animals, ...state.birds, ...state.dogs, ...state.dragonflies];
             all.sort((a,b) => {
-                const ay = (a instanceof Bird ? HORIZON_Y : (a.y || 0)) - (a instanceof Dragonfly ? 0.1 : 0);
-                const by = (b instanceof Bird ? HORIZON_Y : (b.y || 0)) - (b instanceof Dragonfly ? 0.1 : 0);
-                return ay - by;
+                // Bestimme Referenz-Y für Sortierung
+                const getSortY = (obj) => {
+                    if (obj instanceof Bird) return HORIZON_Y; // Vögel fliegen über dem Horizont-Layer
+                    if (obj instanceof Dragonfly) return obj.lake.y; // Libellen sortieren sich auf See-Tiefe
+                    return (obj.y || 0); // Bodenobjekte nutzen ihre eigene Y-Position
+                };
+                
+                const ay = getSortY(a);
+                const by = getSortY(b);
+                
+                // Libellen leicht vor dem See zeichnen
+                const offsetA = (a instanceof Dragonfly ? -0.01 : 0);
+                const offsetB = (b instanceof Dragonfly ? -0.01 : 0);
+                
+                return (ay + offsetA) - (by + offsetB);
             });
 
             all.forEach(e => { 
